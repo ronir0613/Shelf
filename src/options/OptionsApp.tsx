@@ -57,6 +57,17 @@ export default function OptionsApp() {
   };
 
   useEffect(() => {
+    // Clear all desktop notifications when opening options/postpone page
+    if (typeof chrome !== 'undefined' && chrome.notifications) {
+      chrome.notifications.getAll((notifications) => {
+        if (notifications) {
+          for (const id of Object.keys(notifications)) {
+            chrome.notifications.clear(id);
+          }
+        }
+      });
+    }
+
     const parseParams = async () => {
       setIsLoading(true);
       setErrorMsg('');

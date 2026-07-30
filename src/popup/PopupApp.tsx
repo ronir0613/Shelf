@@ -61,6 +61,16 @@ export default function PopupApp() {
     loadReminders();
     loadDebugLogs();
 
+    if (typeof chrome !== 'undefined' && chrome.notifications) {
+      chrome.notifications.getAll((notifications) => {
+        if (notifications) {
+          for (const id of Object.keys(notifications)) {
+            chrome.notifications.clear(id);
+          }
+        }
+      });
+    }
+
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.storage.local.get(['editItemId'], (result) => {
         const itemId = result?.editItemId;

@@ -325,8 +325,24 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
   }
 });
 
+// Helper to clear all active notifications
+function clearAllNotifications() {
+  chrome.notifications.getAll((notifications) => {
+    if (notifications) {
+      for (const id of Object.keys(notifications)) {
+        chrome.notifications.clear(id);
+      }
+    }
+  });
+}
+
 // Register startup listener to check for overdue reminders when Chrome starts
-chrome.runtime.onStartup.addListener(checkOverdueReminders);
+chrome.runtime.onStartup.addListener(async () => {
+  clearAllNotifications();
+  await checkOverdueReminders();
+});
+
+
 
 // Handle messages from popup (e.g. to trigger a save notification)
 chrome.runtime.onMessage.addListener((message) => {

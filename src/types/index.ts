@@ -5,4 +5,5 @@ export interface ShelfItem {
   note?: string;
   createdAt: number;
   remindAt: number;
+  delivered?: boolean;
 }

@@ -1,23 +1,9 @@
-import { getReminder, deleteReminder, getReminders } from '../lib/storage';
+import { getReminder, deleteReminder, getReminders, saveReminder } from '../lib/storage';
 import type { ShelfItem } from '../types';
 
 // Context menu item IDs
 const SHELF_PAGE_ID = 'shelf-page';
 const SHELF_LINK_ID = 'shelf-link';
-
-// Helper to open popup window centered or in standard size
-function openPopup(url: string) {
-  const width = 450;
-  const height = 550;
-  
-  chrome.windows.create({
-    url: chrome.runtime.getURL(url),
-    type: 'popup',
-    width: width,
-    height: height,
-    focused: true
-  });
-}
 
 // Set up context menus on installation
 chrome.runtime.onInstalled.addListener(() => {
@@ -35,15 +21,16 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Handle context menu clicks
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  let url = '';
+  let title = '';
+
   if (info.menuItemId === SHELF_PAGE_ID) {
-    const url = info.pageUrl || '';
-    const title = tab?.title || 'Webpage';
-    openPopup(`options.html?action=add&url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`);
+    url = info.pageUrl || '';
+    title = tab?.title || 'Webpage';
   } else if (info.menuItemId === SHELF_LINK_ID) {
-    const url = info.linkUrl || '';
-    // Use selection text if available, otherwise use hostname or "Link"
-    let title = info.selectionText || '';
+    url = info.linkUrl || '';
+    title = info.selectionText || '';
     if (!title) {
       try {
         title = new URL(url).hostname;
@@ -51,49 +38,66 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         title = 'Shared Link';
       }
     }
-    openPopup(`options.html?action=add&url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`);
+  }
+
+  if (url) {
+    const remindAt = Date.now() + 30 * 60 * 1000; // Default 30 minutes
+    const newItem: ShelfItem = {
+      id: crypto.randomUUID(),
+      title: title.trim() || 'Webpage',
+      url,
+      createdAt: Date.now(),
+      remindAt,
+      delivered: false
+    };
+
+    try {
+      await saveReminder(newItem);
+      
+      // Show confirmation notification
+      chrome.notifications.create(newItem.id + '-save', {
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: 'Saved to Shelf',
+        message: `"${newItem.title}" will remind you in 30 mins.`,
+        buttons: [
+          { title: 'Snooze 1 Hour' },
+          { title: 'Open Page' }
+        ],
+        requireInteraction: false
+      });
+    } catch (err) {
+      console.error('Failed to save context menu item:', err);
+    }
   }
 });
 
-// Queue management for overdue notifications
-async function getNotificationQueue(): Promise<ShelfItem[]> {
-  const data = await chrome.storage.local.get('notificationQueue');
-  return (data.notificationQueue || []) as ShelfItem[];
-}
-
-async function saveNotificationQueue(queue: ShelfItem[]): Promise<void> {
-  await chrome.storage.local.set({ notificationQueue: queue });
-}
-
-async function triggerNextNotification(): Promise<void> {
-  const queue = await getNotificationQueue();
-  if (queue.length === 0) return;
-
-  const nextItem = queue[0];
-  
-  chrome.notifications.create(nextItem.id, {
-    type: 'basic',
-    iconUrl: 'icon.png',
-    title: 'Shelf Reminder',
-    message: nextItem.title,
-    contextMessage: nextItem.note || undefined,
-    buttons: [
-      { title: 'Open' },
-      { title: 'Postpone / Options' }
-    ],
-    requireInteraction: true
-  });
-}
-
-async function handleNotificationClosedOrActioned(notificationId: string): Promise<void> {
-  const queue = await getNotificationQueue();
-  const updatedQueue = queue.filter(item => item.id !== notificationId);
-  await saveNotificationQueue(updatedQueue);
-
-  if (updatedQueue.length > 0) {
-    setTimeout(async () => {
-      await triggerNextNotification();
-    }, 500);
+// Helper to check and notify overdue reminders
+async function checkOverdueReminders() {
+  try {
+    const reminders = await getReminders();
+    const now = Date.now();
+    const overdue = reminders.filter(item => item.remindAt <= now && !item.delivered);
+    
+    for (const item of overdue) {
+      chrome.notifications.create(item.id, {
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: 'Shelf Reminder (Overdue)',
+        message: item.title,
+        contextMessage: item.note || undefined,
+        buttons: [
+          { title: 'Open Page' },
+          { title: 'Postpone 15m' }
+        ],
+        requireInteraction: true
+      });
+      
+      // Mark as delivered
+      await saveReminder({ ...item, delivered: true });
+    }
+  } catch (err) {
+    console.error('Error checking overdue reminders:', err);
   }
 }
 
@@ -102,37 +106,94 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const item = await getReminder(alarm.name);
   if (!item) return;
 
-  const queue = await getNotificationQueue();
-  if (!queue.some(q => q.id === item.id)) {
-    queue.push(item);
-    await saveNotificationQueue(queue);
-  }
+  // If already delivered, don't show notification
+  if (item.delivered) return;
 
-  if (queue.length === 1) {
-    await triggerNextNotification();
-  }
+  chrome.notifications.create(item.id, {
+    type: 'basic',
+    iconUrl: 'icon.png',
+    title: 'Shelf Reminder',
+    message: item.title,
+    contextMessage: item.note || undefined,
+    buttons: [
+      { title: 'Open Page' },
+      { title: 'Postpone 15m' }
+    ],
+    requireInteraction: true
+  });
+
+  // Mark as delivered
+  await saveReminder({ ...item, delivered: true });
 });
 
 // Handle notification button clicks
 chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+  // 1. Handle clicks on save-confirmations
+  if (notificationId.endsWith('-save')) {
+    const originalId = notificationId.replace('-save', '');
+    const item = await getReminder(originalId);
+    if (!item) {
+      chrome.notifications.clear(notificationId);
+      return;
+    }
+
+    if (buttonIndex === 0) {
+      // Snooze 1 Hour
+      const newRemindAt = Date.now() + 60 * 60 * 1000;
+      await saveReminder({ ...item, remindAt: newRemindAt, delivered: false });
+      chrome.notifications.clear(notificationId);
+
+      chrome.notifications.create(originalId + '-snoozed', {
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: 'Snoozed',
+        message: 'Reminder postponed for 1 hour.',
+        requireInteraction: false
+      });
+    } else if (buttonIndex === 1) {
+      // Open Page
+      chrome.tabs.create({ url: item.url });
+      await deleteReminder(originalId);
+      chrome.notifications.clear(notificationId);
+    }
+    return;
+  }
+
+  // 2. Handle normal reminder notifications
   const item = await getReminder(notificationId);
   if (!item) {
-    await handleNotificationClosedOrActioned(notificationId);
+    chrome.notifications.clear(notificationId);
     return;
   }
 
   if (buttonIndex === 0) {
+    // Open Page
     chrome.tabs.create({ url: item.url });
     await deleteReminder(notificationId);
     chrome.notifications.clear(notificationId);
   } else if (buttonIndex === 1) {
-    openPopup(`options.html?action=postpone&id=${notificationId}`);
+    // Postpone 15 minutes
+    const newRemindAt = Date.now() + 15 * 60 * 1000;
+    await saveReminder({ ...item, remindAt: newRemindAt, delivered: false });
     chrome.notifications.clear(notificationId);
+
+    chrome.notifications.create(item.id + '-snoozed', {
+      type: 'basic',
+      iconUrl: 'icon.png',
+      title: 'Snoozed',
+      message: 'Reminder postponed for 15 minutes.',
+      requireInteraction: false
+    });
   }
 });
 
-// Handle notification body clicks (behaves as Open)
+// Handle notification body clicks
 chrome.notifications.onClicked.addListener(async (notificationId) => {
+  if (notificationId.endsWith('-save') || notificationId.endsWith('-snoozed')) {
+    chrome.notifications.clear(notificationId);
+    return;
+  }
+
   const item = await getReminder(notificationId);
   if (item) {
     chrome.tabs.create({ url: item.url });
@@ -141,19 +202,8 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
   chrome.notifications.clear(notificationId);
 });
 
-// Handle notification closed
-chrome.notifications.onClosed.addListener(async (notificationId) => {
-  await handleNotificationClosedOrActioned(notificationId);
-});
+// Run overdue check whenever background service worker starts up
+checkOverdueReminders();
 
-// Handle startup overdue checks
-chrome.runtime.onStartup.addListener(async () => {
-  const reminders = await getReminders();
-  const now = Date.now();
-  
-  const overdue = reminders.filter(item => item.remindAt <= now);
-  if (overdue.length === 0) return;
-
-  await saveNotificationQueue(overdue);
-  await triggerNextNotification();
-});
+// Also register startup listener as a fallback
+chrome.runtime.onStartup.addListener(checkOverdueReminders);

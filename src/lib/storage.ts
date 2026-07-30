@@ -38,7 +38,13 @@ export async function saveReminder(item: ShelfItem): Promise<void> {
   reminders[item.id] = item;
   await chrome.storage.local.set({ reminders });
 
-  await chrome.alarms.create(item.id, { when: item.remindAt });
+  // Only create alarms for future, undelivered reminders
+  if (!item.delivered && item.remindAt > Date.now()) {
+    await chrome.alarms.create(item.id, { when: item.remindAt });
+  } else {
+    // If it's already delivered or in the past, clear any existing alarm for it
+    await chrome.alarms.clear(item.id);
+  }
 }
 
 export async function deleteReminder(id: string): Promise<void> {
@@ -64,6 +70,7 @@ export async function postponeReminder(id: string, minutes: number): Promise<voi
   const updatedItem: ShelfItem = {
     ...item,
     remindAt: newRemindAt,
+    delivered: false, // Reset delivered status on postpone
   };
   await saveReminder(updatedItem);
 }
@@ -75,6 +82,7 @@ export async function postponeToDate(id: string, targetTime: number): Promise<vo
   const updatedItem: ShelfItem = {
     ...item,
     remindAt: targetTime,
+    delivered: false, // Reset delivered status on postpone
   };
   await saveReminder(updatedItem);
 }

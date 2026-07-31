@@ -8,7 +8,6 @@ export default function PopupApp() {
   const [reminders, setReminders] = useState<ShelfItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<{ title: string; url: string } | null>(null);
-  const [debugLogs, setDebugLogs] = useState<{ timestamp: string; message: string }[]>([]);
 
   // View states: 'list' | 'edit'
   const [view, setView] = useState<'list' | 'edit'>('list');
@@ -48,18 +47,9 @@ export default function PopupApp() {
     }
   };
 
-  const loadDebugLogs = () => {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      chrome.storage.local.get('debug_logs', (result) => {
-        setDebugLogs((result.debug_logs || []) as { timestamp: string; message: string }[]);
-      });
-    }
-  };
-
   // Fetch active tab and reminders on load
   useEffect(() => {
     loadReminders();
-    loadDebugLogs();
 
     if (typeof chrome !== 'undefined' && chrome.notifications) {
       chrome.notifications.getAll((notifications) => {
@@ -101,9 +91,6 @@ export default function PopupApp() {
       const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
         if (changes.reminders) {
           loadReminders();
-        }
-        if (changes.debug_logs) {
-          setDebugLogs((changes.debug_logs.newValue || []) as { timestamp: string; message: string }[]);
         }
       };
       chrome.storage.onChanged.addListener(handleStorageChange);
@@ -619,33 +606,6 @@ export default function PopupApp() {
           </div>
         </form>
       )}
-
-      {/* Debug Logs Section */}
-      <div className="mt-4 border-t border-zinc-900 pt-3">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Debug Logs</span>
-          <button 
-            onClick={() => {
-              chrome.storage.local.remove('debug_logs');
-              setDebugLogs([]);
-            }}
-            className="text-[10px] text-zinc-600 hover:text-zinc-400"
-          >
-            Clear
-          </button>
-        </div>
-        <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-2 max-h-24 overflow-y-auto font-mono text-[9px] text-zinc-500 flex flex-col gap-1">
-          {debugLogs.length === 0 ? (
-            <div>No logs yet. Click buttons to generate logs.</div>
-          ) : (
-            debugLogs.map((log, i) => (
-              <div key={i} className="leading-normal">
-                <span className="text-zinc-600">[{log.timestamp}]</span> {log.message}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }

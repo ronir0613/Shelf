@@ -80,24 +80,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// Helper to log debug messages to chrome.storage.local
-async function logDebug(message: string) {
-  try {
-    const data = await chrome.storage.local.get('debug_logs');
-    const logs = (data.debug_logs || []) as any[];
-    logs.push({
-      timestamp: new Date().toLocaleTimeString(),
-      message
-    });
-    // Keep only last 50 logs
-    if (logs.length > 50) {
-      logs.shift();
-    }
-    await chrome.storage.local.set({ debug_logs: logs });
-    console.log('[DEBUG LOG]:', message);
-  } catch (err) {
-    console.error('Failed to log debug message:', err);
-  }
+// Helper to log debug messages (disabled)
+async function logDebug(_message: string) {
+  // Debug logging disabled
 }
 
 let isCheckingOverdue = false;

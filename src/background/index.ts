@@ -25,7 +25,7 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 
   // Check for overdue reminders when the extension is installed/reloaded
-  checkOverdueReminders();
+  checkOverdueReminders(1500);
 });
 
 // Handle context menu clicks
@@ -100,15 +100,25 @@ async function logDebug(message: string) {
   }
 }
 
+let isCheckingOverdue = false;
+
 // Helper to check and notify overdue reminders
-async function checkOverdueReminders() {
+async function checkOverdueReminders(delayMs = 0) {
+  if (isCheckingOverdue) return;
+  isCheckingOverdue = true;
   try {
+    if (delayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
     const reminders = await getReminders();
     const now = Date.now();
     const overdue = reminders.filter(item => item.remindAt <= now && !item.delivered);
     await logDebug(`checkOverdueReminders: found ${overdue.length} overdue items`);
     
     for (const item of overdue) {
+      // Mark as delivered first to avoid duplicate notifications on concurrent calls
+      await saveReminder({ ...item, delivered: true });
+
       await logDebug(`Creating overdue notification for: ${item.title} (ID: ${item.id})`);
       chrome.notifications.create(item.id, {
         type: 'basic',
@@ -122,13 +132,12 @@ async function checkOverdueReminders() {
         ],
         requireInteraction: true
       });
-      
-      // Mark as delivered
-      await saveReminder({ ...item, delivered: true });
     }
   } catch (err) {
     await logDebug(`Error checking overdue reminders: ${err}`);
     console.error('Error checking overdue reminders:', err);
+  } finally {
+    isCheckingOverdue = false;
   }
 }
 
@@ -339,12 +348,21 @@ function clearAllNotifications() {
 // Register startup listener to check for overdue reminders when Chrome starts
 chrome.runtime.onStartup.addListener(async () => {
   clearAllNotifications();
-  await checkOverdueReminders();
+  await checkOverdueReminders(1500);
 });
 
+// Check for overdue reminders when a browser window is created (e.g. browser is reopened)
+chrome.windows.onCreated.addListener(async () => {
+  await logDebug('onCreated: browser window opened, checking overdue reminders');
+  await checkOverdueReminders(1500);
+});
+
+// Run overdue check when the service worker starts up initially
+checkOverdueReminders(1500);
 
 
-// Handle messages from popup (e.g. to trigger a save notification)
+
+// Handle messages from popup (e.g. to trigger a save notification or open/remove items)
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'NOTIFY_SAVED') {
     try {
@@ -362,6 +380,17 @@ chrome.runtime.onMessage.addListener((message) => {
       });
     } catch (err) {
       console.error('Error creating saved notification in response to message:', err);
+    }
+  } else if (message.type === 'OPEN_AND_REMOVE') {
+    try {
+      const { id, url } = message;
+      openUrl(url).then((success) => {
+        if (success) {
+          deleteReminder(id);
+        }
+      });
+    } catch (err) {
+      console.error('Error opening and removing item in response to message:', err);
     }
   }
 });

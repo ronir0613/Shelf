@@ -167,13 +167,17 @@ export default function PopupApp() {
   };
 
   const handleOpen = async (item: ShelfItem) => {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.create({ url: item.url });
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.sendMessage({
+        type: 'OPEN_AND_REMOVE',
+        id: item.id,
+        url: item.url
+      });
     } else {
       window.open(item.url, '_blank');
+      await deleteReminder(item.id);
+      loadReminders();
     }
-    await deleteReminder(item.id);
-    loadReminders();
   };
 
   const handleEditInit = (item: ShelfItem) => {

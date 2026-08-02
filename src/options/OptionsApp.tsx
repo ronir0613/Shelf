@@ -17,6 +17,8 @@ export default function OptionsApp() {
   const [preset, setPreset] = useState<'30m' | 'tonight' | 'tomorrow-morning' | 'tomorrow-evening' | 'custom'>('30m');
   const [postponePreset, setPostponePreset] = useState<'15m' | '1h' | 'tomorrow' | 'custom'>('15m');
   const [customTime, setCustomTime] = useState('');
+  const [everyday, setEveryday] = useState(false);
+  const [everydayTime, setEverydayTime] = useState('');
   
   // Loading & error
   const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +86,7 @@ export default function OptionsApp() {
         setTitle(params.get('title') || 'Webpage');
         setUrl(params.get('url') || '');
         setPreset('30m');
+        setEveryday(false);
         setIsLoading(false);
       } else if (act === 'edit' || act === 'postpone') {
         const itemId = params.get('id') || '';
@@ -106,10 +109,13 @@ export default function OptionsApp() {
         setUrl(item.url);
         setNote(item.note || '');
         setCreatedAt(item.createdAt);
+        setEveryday(item.everyday || false);
+        setEverydayTime(item.everydayTime || '');
         
         if (act === 'edit') {
           setPreset('custom');
           setCustomTime(toLocalDatetimeString(new Date(item.remindAt)));
+          setEveryday(item.everyday || false);
         } else {
           setPostponePreset('15m');
         }
@@ -160,13 +166,24 @@ export default function OptionsApp() {
         return;
       }
 
+      const getHHMM = (timestamp: number): string => {
+        const d = new Date(timestamp);
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      };
+
       const item: ShelfItem = {
         id: action === 'add' ? crypto.randomUUID() : id,
         title,
         url,
         note: note.trim() || undefined,
         createdAt: action === 'add' ? Date.now() : createdAt,
-        remindAt
+        remindAt,
+        everyday: action === 'postpone' ? everyday : (action === 'add' || action === 'edit' ? everyday : undefined),
+        everydayTime: action === 'postpone'
+          ? (everyday ? (everydayTime || getHHMM(remindAt)) : undefined)
+          : (everyday ? getHHMM(remindAt) : undefined),
       };
 
       await saveReminder(item);
@@ -346,6 +363,20 @@ export default function OptionsApp() {
                   />
                 </div>
               )}
+
+              {/* Everyday Checkbox */}
+              <div className="flex items-center gap-2 px-1 py-0.5">
+                <input
+                  type="checkbox"
+                  id="options-everyday"
+                  checked={everyday}
+                  onChange={(e) => setEveryday(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-zinc-800 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-zinc-200"
+                />
+                <label htmlFor="options-everyday" className="text-xs text-zinc-400 font-medium cursor-pointer select-none">
+                  Repeat everyday at this time
+                </label>
+              </div>
 
               {/* Optional Note */}
               <div className="flex flex-col gap-1.5">

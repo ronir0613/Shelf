@@ -1,15 +1,19 @@
-export function formatRemindAt(time: number): string {
+export function formatRemindAt(time: number, everyday?: boolean): string {
   const date = new Date(time);
   const now = new Date();
+  
+  const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+  const timeStr = date.toLocaleTimeString(undefined, options);
+
+  if (everyday) {
+    return `Everyday at ${timeStr}`;
+  }
   
   const isToday = date.toDateString() === now.toDateString();
   
   const tomorrow = new Date();
   tomorrow.setDate(now.getDate() + 1);
   const isTomorrow = date.toDateString() === tomorrow.toDateString();
-  
-  const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
-  const timeStr = date.toLocaleTimeString(undefined, options);
   
   if (isToday) {
     return `Today at ${timeStr}`;

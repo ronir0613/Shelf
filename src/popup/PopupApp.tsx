@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Edit2, Trash2, Clock, FileText, Inbox, Plus, X, Check, AlertTriangle, Link2 } from 'lucide-react';
+import { ExternalLink, Edit2, Trash2, Clock, FileText, Inbox, Plus, X, Check, AlertTriangle, Link2, RefreshCw } from 'lucide-react';
 import type { ShelfItem } from '../types';
 import { getReminders, deleteReminder, saveReminder } from '../lib/storage';
 import { formatRemindAt } from '../lib/date';
@@ -19,6 +19,7 @@ export default function PopupApp() {
   const [preset, setPreset] = useState('30m');
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
+  const [everyday, setEveryday] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -31,6 +32,13 @@ export default function PopupApp() {
   };
 
   const getTimeString = (d: Date = new Date()) => {
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const getHHMM = (timestamp: number): string => {
+    const d = new Date(timestamp);
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
@@ -176,6 +184,7 @@ export default function PopupApp() {
     const remindDate = new Date(item.remindAt);
     setCustomDate(getTodayDateString(remindDate));
     setCustomTime(getTimeString(remindDate));
+    setEveryday(item.everyday || false);
     setErrorMsg('');
     setSuccessMsg('');
     setView('edit');
@@ -195,6 +204,7 @@ export default function PopupApp() {
     setTitle(activeTab?.title || '');
     setNote('');
     setPreset('30m');
+    setEveryday(false);
     const defaultTime = new Date(Date.now() + 30 * 60 * 1000);
     setCustomDate(getTodayDateString(defaultTime));
     setCustomTime(getTimeString(defaultTime));
@@ -223,11 +233,14 @@ export default function PopupApp() {
         note: note.trim() || undefined,
         createdAt: Date.now(),
         remindAt,
+        everyday,
+        everydayTime: everyday ? getHHMM(remindAt) : undefined,
       };
 
       await saveReminder(newItem);
       setSuccessMsg('Added to Shelf!');
       setNote('');
+      setEveryday(false);
       
       // Trigger Chrome system notification via background script to ensure it shows
       if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -282,6 +295,8 @@ export default function PopupApp() {
         note: note.trim() || undefined,
         remindAt,
         delivered: false, // Reset delivered status on edit
+        everyday,
+        everydayTime: everyday ? getHHMM(remindAt) : undefined,
       };
 
       await saveReminder(updatedItem);
@@ -293,6 +308,7 @@ export default function PopupApp() {
         setTitle(activeTab?.title || '');
         setNote('');
         setPreset('30m');
+        setEveryday(false);
         setSuccessMsg('');
       }, 800);
 
@@ -396,6 +412,20 @@ export default function PopupApp() {
                 )}
               </div>
 
+              {/* Everyday Checkbox */}
+              <div className="flex items-center gap-2 px-1 py-0.5">
+                <input
+                  type="checkbox"
+                  id="everyday"
+                  checked={everyday}
+                  onChange={(e) => setEveryday(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-zinc-800 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-zinc-200"
+                />
+                <label htmlFor="everyday" className="text-xs text-zinc-400 font-medium cursor-pointer select-none">
+                  Repeat everyday at this time
+                </label>
+              </div>
+
               {/* Status Messages */}
               {errorMsg && (
                 <div className="text-red-400 text-xs flex items-center gap-1.5 mt-1 font-medium bg-red-950/20 border border-red-950 p-2 rounded-lg">
@@ -451,8 +481,14 @@ export default function PopupApp() {
                     {/* Footer Controls */}
                     <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-zinc-900/50">
                       <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-medium">
-                        <Clock className="w-3.5 h-3.5 stroke-[1.5]" />
-                        <span>{formatRemindAt(item.remindAt)}</span>
+                        {item.everyday ? (
+                          <RefreshCw className="w-3 h-3 text-emerald-500 animate-[spin_4s_linear_infinite]" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 stroke-[1.5]" />
+                        )}
+                        <span className={item.everyday ? "text-emerald-400 font-semibold" : ""}>
+                          {formatRemindAt(item.remindAt, item.everyday)}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -563,6 +599,20 @@ export default function PopupApp() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Everyday Checkbox */}
+            <div className="flex items-center gap-2 px-1 py-0.5">
+              <input
+                type="checkbox"
+                id="edit-everyday"
+                checked={everyday}
+                onChange={(e) => setEveryday(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-zinc-800 bg-zinc-900 text-zinc-100 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-zinc-200"
+              />
+              <label htmlFor="edit-everyday" className="text-xs text-zinc-400 font-medium cursor-pointer select-none">
+                Repeat everyday at this time
+              </label>
             </div>
 
             {/* Error / Success */}

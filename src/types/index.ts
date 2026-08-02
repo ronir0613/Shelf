@@ -6,4 +6,6 @@ export interface ShelfItem {
   createdAt: number;
   remindAt: number;
   delivered?: boolean;
+  everyday?: boolean;
+  everydayTime?: string; // HH:MM
 }

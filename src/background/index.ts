@@ -85,6 +85,24 @@ async function logDebug(_message: string) {
   // Debug logging disabled
 }
 
+function getHHMM(timestamp: number): string {
+  const d = new Date(timestamp);
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function getNextOccurrence(everydayTime: string): number {
+  const [hours, minutes] = everydayTime.split(':').map(Number);
+  const d = new Date();
+  d.setHours(hours, minutes, 0, 0);
+  if (d.getTime() <= Date.now()) {
+    d.setDate(d.getDate() + 1);
+  }
+  return d.getTime();
+}
+
+
 let isCheckingOverdue = false;
 
 // Helper to check and notify overdue reminders
@@ -101,8 +119,13 @@ async function checkOverdueReminders(delayMs = 0) {
     await logDebug(`checkOverdueReminders: found ${overdue.length} overdue items`);
     
     for (const item of overdue) {
-      // Mark as delivered first to avoid duplicate notifications on concurrent calls
-      await saveReminder({ ...item, delivered: true });
+      // Mark as delivered or reschedule first to avoid duplicate notifications on concurrent calls
+      if (item.everyday) {
+        const nextRemindAt = getNextOccurrence(item.everydayTime || getHHMM(item.remindAt));
+        await saveReminder({ ...item, remindAt: nextRemindAt, delivered: false });
+      } else {
+        await saveReminder({ ...item, delivered: true });
+      }
 
       await logDebug(`Creating overdue notification for: ${item.title} (ID: ${item.id})`);
       chrome.notifications.create(item.id, {
@@ -156,8 +179,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       requireInteraction: true
     });
 
-    // Mark as delivered
-    await saveReminder({ ...item, delivered: true });
+    // Mark as delivered or reschedule if recurring everyday
+    if (item.everyday) {
+      const nextRemindAt = getNextOccurrence(item.everydayTime || getHHMM(item.remindAt));
+      await saveReminder({ ...item, remindAt: nextRemindAt, delivered: false });
+    } else {
+      await saveReminder({ ...item, delivered: true });
+    }
   } catch (err) {
     await logDebug(`Error in onAlarm listener: ${err}`);
     console.error('Error in onAlarm listener:', err);
@@ -268,7 +296,9 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
       const success = await openUrl(item.url);
       await logDebug(`onButtonClicked normal: openUrl success: ${success}`);
       if (success) {
-        await deleteReminder(notificationId);
+        if (!item.everyday) {
+          await deleteReminder(notificationId);
+        }
       }
       chrome.notifications.clear(notificationId);
     } else if (buttonIndex === 1) {
@@ -307,7 +337,9 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
       await logDebug(`onClicked (body click): opening "${item.title}"`);
       const success = await openUrl(item.url);
       if (success) {
-        await deleteReminder(notificationId);
+        if (!item.everyday) {
+          await deleteReminder(notificationId);
+        }
       }
     } else {
       await logDebug(`onClicked (body click): item not found for id=${notificationId}`);
@@ -369,9 +401,15 @@ chrome.runtime.onMessage.addListener((message) => {
   } else if (message.type === 'OPEN_AND_REMOVE') {
     try {
       const { id, url } = message;
-      openUrl(url).then((success) => {
-        if (success) {
-          deleteReminder(id);
+      getReminder(id).then(async (item) => {
+        const success = await openUrl(url);
+        if (success && item) {
+          if (item.everyday) {
+            const nextRemindAt = getNextOccurrence(item.everydayTime || getHHMM(item.remindAt));
+            await saveReminder({ ...item, remindAt: nextRemindAt, delivered: false });
+          } else {
+            await deleteReminder(id);
+          }
         }
       });
     } catch (err) {

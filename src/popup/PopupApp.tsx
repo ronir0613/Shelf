@@ -4,6 +4,63 @@ import type { ShelfItem } from '../types';
 import { getReminders, deleteReminder, saveReminder } from '../lib/storage';
 import { formatRemindAt } from '../lib/date';
 
+// Helpers for simple date and time dropdown selectors
+const getDateOptions = () => {
+  const options = [];
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const now = new Date();
+  
+  for (let i = 0; i < 14; i++) {
+    const d = new Date();
+    d.setDate(now.getDate() + i);
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const value = `${year}-${month}-${day}`;
+    
+    let label = '';
+    if (i === 0) {
+      label = `Today (${weekdays[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()})`;
+    } else if (i === 1) {
+      label = `Tomorrow (${weekdays[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()})`;
+    } else {
+      label = `${weekdays[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`;
+    }
+    
+    options.push({ value, label });
+  }
+  return options;
+};
+
+const getTimeOptions = () => {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += 30) {
+      const hh = String(hour).padStart(2, '0');
+      const mm = String(minute).padStart(2, '0');
+      const value = `${hh}:${mm}`;
+      
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+      const displayMinute = String(minute).padStart(2, '0');
+      const label = `${displayHour}:${displayMinute} ${ampm}`;
+      
+      options.push({ value, label });
+    }
+  }
+  return options;
+};
+
+const getRoundedDateTime = (d: Date = new Date()) => {
+  const rounded = new Date(d);
+  const minutes = rounded.getMinutes();
+  const roundedMinutes = Math.round(minutes / 30) * 30;
+  rounded.setMinutes(roundedMinutes, 0, 0);
+  return rounded;
+};
+
 export default function PopupApp() {
   const [reminders, setReminders] = useState<ShelfItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,6 +79,8 @@ export default function PopupApp() {
   const [everyday, setEveryday] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isCustomDateNative, setIsCustomDateNative] = useState(false);
+  const [isCustomTimeNative, setIsCustomTimeNative] = useState(false);
 
   // Helper date formatting/utils
   const getTodayDateString = (d: Date = new Date()) => {
@@ -113,9 +172,9 @@ export default function PopupApp() {
     }
   }, []);
 
-  // Initialize custom date/time inputs to current time + 30 mins
+  // Initialize custom date/time inputs to current rounded time + 30 mins
   useEffect(() => {
-    const defaultTime = new Date(Date.now() + 30 * 60 * 1000);
+    const defaultTime = getRoundedDateTime(new Date(Date.now() + 30 * 60 * 1000));
     setCustomDate(getTodayDateString(defaultTime));
     setCustomTime(getTimeString(defaultTime));
   }, []);
@@ -182,8 +241,22 @@ export default function PopupApp() {
     setPreset('custom');
     
     const remindDate = new Date(item.remindAt);
-    setCustomDate(getTodayDateString(remindDate));
-    setCustomTime(getTimeString(remindDate));
+    const dateStr = getTodayDateString(remindDate);
+    const timeStr = getTimeString(remindDate);
+    
+    setCustomDate(dateStr);
+    setCustomTime(timeStr);
+    
+    // Check if the date is in the next 14 days
+    const dateOptions = getDateOptions();
+    const isDateInDropdown = dateOptions.some(opt => opt.value === dateStr);
+    setIsCustomDateNative(!isDateInDropdown);
+    
+    // Check if the time is on a 30-min mark
+    const timeOptions = getTimeOptions();
+    const isTimeInDropdown = timeOptions.some(opt => opt.value === timeStr);
+    setIsCustomTimeNative(!isTimeInDropdown);
+    
     setEveryday(item.everyday || false);
     setErrorMsg('');
     setSuccessMsg('');
@@ -205,7 +278,9 @@ export default function PopupApp() {
     setNote('');
     setPreset('30m');
     setEveryday(false);
-    const defaultTime = new Date(Date.now() + 30 * 60 * 1000);
+    setIsCustomDateNative(false);
+    setIsCustomTimeNative(false);
+    const defaultTime = getRoundedDateTime(new Date(Date.now() + 30 * 60 * 1000));
     setCustomDate(getTodayDateString(defaultTime));
     setCustomTime(getTimeString(defaultTime));
     setErrorMsg('');
@@ -262,6 +337,8 @@ export default function PopupApp() {
       }
 
       setPreset('30m');
+      setIsCustomDateNative(false);
+      setIsCustomTimeNative(false);
       
       // Auto-clear success message
       setTimeout(() => {
@@ -309,6 +386,8 @@ export default function PopupApp() {
         setNote('');
         setPreset('30m');
         setEveryday(false);
+        setIsCustomDateNative(false);
+        setIsCustomTimeNative(false);
         setSuccessMsg('');
       }, 800);
 
@@ -391,22 +470,86 @@ export default function PopupApp() {
 
                 {/* Custom Date/Time pickers when "custom" is selected */}
                 {preset === 'custom' && (
-                  <div className="flex gap-2 mt-1 animate-fadeIn">
-                    <div className="flex-1">
-                      <input
-                        type="date"
-                        value={customDate}
-                        onChange={(e) => setCustomDate(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <input
-                        type="time"
-                        value={customTime}
-                        onChange={(e) => setCustomTime(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
-                      />
+                  <div className="flex flex-col gap-2 mt-1 animate-fadeIn">
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        {isCustomDateNative ? (
+                          <div className="flex items-center gap-1.5 w-full animate-fadeIn">
+                            <input
+                              type="date"
+                              value={customDate}
+                              onChange={(e) => setCustomDate(e.target.value)}
+                              className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCustomDateNative(false);
+                                setCustomDate(getTodayDateString(new Date()));
+                              }}
+                              className="px-2 py-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded text-[10px] font-semibold transition-colors"
+                            >
+                              List
+                            </button>
+                          </div>
+                        ) : (
+                          <select
+                            value={customDate}
+                            onChange={(e) => {
+                              if (e.target.value === 'native') {
+                                setIsCustomDateNative(true);
+                              } else {
+                                setCustomDate(e.target.value);
+                              }
+                            }}
+                            className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none cursor-pointer"
+                          >
+                            {getDateOptions().map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                            <option value="native">Specific Date...</option>
+                          </select>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        {isCustomTimeNative ? (
+                          <div className="flex items-center gap-1.5 w-full animate-fadeIn">
+                            <input
+                              type="time"
+                              value={customTime}
+                              onChange={(e) => setCustomTime(e.target.value)}
+                              className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCustomTimeNative(false);
+                                setCustomTime(getTimeString(getRoundedDateTime(new Date())));
+                              }}
+                              className="px-2 py-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded text-[10px] font-semibold transition-colors"
+                            >
+                              List
+                            </button>
+                          </div>
+                        ) : (
+                          <select
+                            value={customTime}
+                            onChange={(e) => {
+                              if (e.target.value === 'native') {
+                                setIsCustomTimeNative(true);
+                              } else {
+                                setCustomTime(e.target.value);
+                              }
+                            }}
+                            className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none cursor-pointer"
+                          >
+                            {getTimeOptions().map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                            <option value="native">Specific Time...</option>
+                          </select>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -580,22 +723,86 @@ export default function PopupApp() {
               </select>
 
               {preset === 'custom' && (
-                <div className="flex gap-2 mt-1 animate-fadeIn">
-                  <div className="flex-1">
-                    <input
-                      type="date"
-                      value={customDate}
-                      onChange={(e) => setCustomDate(e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <input
-                      type="time"
-                      value={customTime}
-                      onChange={(e) => setCustomTime(e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
-                    />
+                <div className="flex flex-col gap-2 mt-1 animate-fadeIn">
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      {isCustomDateNative ? (
+                        <div className="flex items-center gap-1.5 w-full animate-fadeIn">
+                          <input
+                            type="date"
+                            value={customDate}
+                            onChange={(e) => setCustomDate(e.target.value)}
+                            className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCustomDateNative(false);
+                              setCustomDate(getTodayDateString(new Date()));
+                            }}
+                            className="px-2 py-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded text-[10px] font-semibold transition-colors"
+                          >
+                            List
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          value={customDate}
+                          onChange={(e) => {
+                            if (e.target.value === 'native') {
+                              setIsCustomDateNative(true);
+                            } else {
+                              setCustomDate(e.target.value);
+                            }
+                          }}
+                          className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none cursor-pointer"
+                        >
+                          {getDateOptions().map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                          <option value="native">Specific Date...</option>
+                        </select>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      {isCustomTimeNative ? (
+                        <div className="flex items-center gap-1.5 w-full animate-fadeIn">
+                          <input
+                            type="time"
+                            value={customTime}
+                            onChange={(e) => setCustomTime(e.target.value)}
+                            className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCustomTimeNative(false);
+                              setCustomTime(getTimeString(getRoundedDateTime(new Date())));
+                            }}
+                            className="px-2 py-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded text-[10px] font-semibold transition-colors"
+                          >
+                            List
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          value={customTime}
+                          onChange={(e) => {
+                            if (e.target.value === 'native') {
+                              setIsCustomTimeNative(true);
+                            } else {
+                              setCustomTime(e.target.value);
+                            }
+                          }}
+                          className="w-full bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-lg px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none cursor-pointer"
+                        >
+                          {getTimeOptions().map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                          <option value="native">Specific Time...</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

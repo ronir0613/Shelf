@@ -242,41 +242,10 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
         // Edit Time
         await logDebug('onButtonClicked save-confirm: clicked Edit Time');
         await chrome.storage.local.set({ editItemId: originalId });
-        try {
-          let windowId: number | undefined;
-          try {
-            const lastFocused = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
-            if (lastFocused && lastFocused.id) {
-              windowId = lastFocused.id;
-            }
-          } catch (e) {
-            await logDebug(`onButtonClicked get last focused window failed: ${e}`);
-          }
-
-          if (!windowId) {
-            const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
-            const normalWindow = windows.find(w => w.focused) || windows[0];
-            if (normalWindow && normalWindow.id) {
-              windowId = normalWindow.id;
-            }
-          }
-
-          if (windowId) {
-            await chrome.windows.update(windowId, { focused: true });
-            if (chrome.action && chrome.action.openPopup) {
-              await chrome.action.openPopup({ windowId });
-              await logDebug('onButtonClicked: openPopup succeeded');
-            } else {
-              throw new Error('chrome.action.openPopup not available');
-            }
-          } else {
-            throw new Error('No active browser window found');
-          }
-        } catch (err) {
-          await logDebug(`onButtonClicked popup open failed: ${err}`);
-          const optionsUrl = chrome.runtime.getURL(`options.html?action=edit&id=${originalId}`);
-          await openUrl(optionsUrl);
-        }
+        // Open options page directly — chrome.action.openPopup requires a direct
+        // user gesture (toolbar click) which is not available in notification callbacks.
+        const optionsUrl = chrome.runtime.getURL(`options.html?action=edit&id=${originalId}`);
+        await openUrl(optionsUrl);
         chrome.notifications.clear(notificationId);
       }
       return;
@@ -380,7 +349,7 @@ checkOverdueReminders(1500);
 
 
 // Handle messages from popup (e.g. to trigger a save notification or open/remove items)
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message): true | void => {
   if (message.type === 'NOTIFY_SAVED') {
     try {
       const { item, timeMsg } = message;
@@ -398,10 +367,12 @@ chrome.runtime.onMessage.addListener((message) => {
     } catch (err) {
       console.error('Error creating saved notification in response to message:', err);
     }
+    return;
   } else if (message.type === 'OPEN_AND_REMOVE') {
-    try {
-      const { id, url } = message;
-      getReminder(id).then(async (item) => {
+    const { id, url } = message;
+    (async () => {
+      try {
+        const item = await getReminder(id);
         const success = await openUrl(url);
         if (success && item) {
           if (item.everyday) {
@@ -411,9 +382,10 @@ chrome.runtime.onMessage.addListener((message) => {
             await deleteReminder(id);
           }
         }
-      });
-    } catch (err) {
-      console.error('Error opening and removing item in response to message:', err);
-    }
+      } catch (err) {
+        console.error('Error opening and removing item in response to message:', err);
+      }
+    })();
+    return true; // Signal async work is in progress — keep message channel alive
   }
 });

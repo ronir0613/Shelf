@@ -408,7 +408,11 @@ export default function PopupApp() {
           </div>
           <span className="font-semibold text-zinc-200 tracking-tight">Shelf</span>
         </div>
-        <span className="text-xs text-zinc-500 font-medium">V1.1</span>
+        <span className="text-xs text-zinc-500 font-medium">
+          v{typeof chrome !== 'undefined' && chrome.runtime?.getManifest
+            ? chrome.runtime.getManifest().version
+            : '1.0.0'}
+        </span>
       </div>
 
       {/* Main Content Area */}

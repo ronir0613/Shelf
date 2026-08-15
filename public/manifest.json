@@ -8,7 +8,8 @@
     "alarms",
     "notifications",
     "contextMenus",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "background": {
     "service_worker": "background.js",
@@ -16,6 +17,7 @@
   },
   "action": {
     "default_popup": "popup.html",
+    "default_title": "Shelf",
     "default_icon": {
       "16": "icon-16.png",
       "32": "icon-32.png",

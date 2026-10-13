@@ -120,20 +120,20 @@
     </div>
 
     <h1>Privacy Policy</h1>
-    <p class="subtitle">Last updated: August 2025 &nbsp;&middot;&nbsp; Effective immediately</p>
+    <p class="subtitle">Last updated: October 12, 2026</p>
 
     <div class="highlight-box">
       <span class="icon">&#128274;</span>
       <p>
-        <strong>Short version:</strong> Shelf stores everything you save &mdash; page URLs, titles, notes, and reminder times &mdash;
-        exclusively on your own device. No data is ever sent to external servers, collected by the developer,
-        or shared with any third party.
+        <strong>Short version:</strong> Shelf stores the page or link you choose to save, its title, your optional note,
+        and its reminder settings in Chrome's local extension storage. Shelf does not send this information to the
+        developer or to external servers.
       </p>
     </div>
 
     <div class="card">
       <h2>What Shelf Stores</h2>
-      <p>When you save a page to Shelf, the following information is stored locally on your device using Chrome's built-in storage API (<code>chrome.storage.local</code>):</p>
+      <p>Shelf accesses a page's URL and title only when you invoke the extension or choose a Shelf command from the context menu. It does not read pages or monitor browsing in the background. When you save a page or link, Shelf stores the following information in Chrome's local extension storage (<code>chrome.storage.local</code>):</p>
       <ul>
         <li>The URL of the saved page</li>
         <li>The page title (editable by you)</li>
@@ -141,7 +141,7 @@
         <li>The date and time you want to be reminded</li>
         <li>Whether the reminder repeats daily</li>
       </ul>
-      <p style="margin-top:14px;">This data is stored only on your local device within your Chrome browser profile. It is never transmitted anywhere.</p>
+      <p style="margin-top:14px;">This information stays in your Chrome profile on your device. Shelf does not transmit it, sell it, or share it with third parties. The developer does not receive it.</p>
     </div>
 
     <div class="card">
@@ -149,7 +149,7 @@
       <ul>
         <li>Does not connect to any external server or API</li>
         <li>Does not collect analytics, usage data, or crash reports</li>
-        <li>Does not track your browsing history or reading habits</li>
+        <li>Does not read pages or monitor browsing activity in the background</li>
         <li>Does not use cookies</li>
         <li>Does not share any information with third parties</li>
         <li>Does not sell any data &mdash; ever</li>
@@ -163,18 +163,14 @@
         <li><strong style="color:#e4e4e7;">storage</strong> &mdash; saves your shelf items locally on your device</li>
         <li><strong style="color:#e4e4e7;">alarms</strong> &mdash; schedules reminder notifications at your chosen time</li>
         <li><strong style="color:#e4e4e7;">notifications</strong> &mdash; displays reminder and confirmation pop-ups</li>
-        <li><strong style="color:#e4e4e7;">contextMenus</strong> &mdash; adds &ldquo;Shelf This Page&rdquo; to the right-click menu</li>
-        <li><strong style="color:#e4e4e7;">activeTab</strong> &mdash; reads the URL and title of the current tab when you click the icon</li>
-        <li><strong style="color:#e4e4e7;">tabs</strong> &mdash; opens a saved page in a new tab when a reminder fires</li>
+        <li><strong style="color:#e4e4e7;">contextMenus</strong> &mdash; adds options to save a page or link from the right-click menu</li>
+        <li><strong style="color:#e4e4e7;">activeTab</strong> &mdash; reads the current page's URL and title after you invoke Shelf, so it can save the page you chose</li>
       </ul>
     </div>
 
     <div class="card">
       <h2>Data Deletion</h2>
-      <p>
-        You can delete any saved item at any time directly from the extension popup.
-        Uninstalling Shelf from Chrome will permanently remove all locally stored data.
-      </p>
+      <p>You can delete any saved item from the extension popup. Uninstalling Shelf removes its locally stored extension data from your Chrome profile.</p>
       <p>
         Because no data is ever sent externally, there is nothing to request deletion of from any server.
       </p>
@@ -183,8 +179,7 @@
     <div class="card">
       <h2>Children's Privacy</h2>
       <p>
-        Shelf does not knowingly collect any information from anyone, including children under the age of 13.
-        Since no data is collected or transmitted at all, there are no special provisions required.
+        Shelf is not designed to collect information from children. A URL or note that you choose to save may contain information you consider personal; Shelf keeps it in Chrome's local extension storage and does not send it to the developer.
       </p>
     </div>
 

@@ -128,17 +128,6 @@ export default function OptionsApp() {
 
 
   useEffect(() => {
-    // Clear all desktop notifications when opening options/postpone page
-    if (typeof chrome !== 'undefined' && chrome.notifications) {
-      chrome.notifications.getAll((notifications) => {
-        if (notifications) {
-          for (const id of Object.keys(notifications)) {
-            chrome.notifications.clear(id);
-          }
-        }
-      });
-    }
-
     const parseParams = async () => {
       setIsLoading(true);
       setErrorMsg('');
@@ -218,6 +207,11 @@ export default function OptionsApp() {
     e.preventDefault();
     if (success) return;
 
+    if ((action === 'add' || action === 'edit') && !isWebUrl(url)) {
+      setErrorMsg('Shelf can only save pages with an http or https address.');
+      return;
+    }
+
     try {
       let remindAt = 0;
       
@@ -250,8 +244,8 @@ export default function OptionsApp() {
         }
       }
 
-      if (isNaN(remindAt) || remindAt <= Date.now()) {
-        setErrorMsg('Please select a reminder time in the future.');
+      if (!Number.isFinite(remindAt) || remindAt <= Date.now()) {
+        setErrorMsg('Choose a reminder time in the future.');
         return;
       }
 
@@ -287,6 +281,15 @@ export default function OptionsApp() {
       setErrorMsg('Failed to save reminder.');
     }
   };
+
+  function isWebUrl(value: string): boolean {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
 
   const handleDelete = async () => {
     if (!id) return;
@@ -333,14 +336,16 @@ export default function OptionsApp() {
   }
 
   return (
-    <div className="w-full h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col justify-between p-5 border border-zinc-900 select-none overflow-y-auto">
+    <div className="w-full h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col justify-between p-5 border border-zinc-900 overflow-y-auto">
       {/* Header */}
       <div className="flex justify-between items-center pb-3 border-b border-zinc-900 mb-4">
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
           {action === 'add' ? 'Shelf This Page' : action === 'edit' ? 'Edit Shelf Item' : 'Postpone Reminder'}
         </span>
         <button 
+          type="button"
           onClick={handleClose}
+          aria-label="Close options"
           className="p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-900 transition-all duration-150"
         >
           <X className="w-4 h-4" />

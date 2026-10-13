@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "127",
   "name": "Shelf",
   "version": "1.0.0",
   "description": "Save webpages for later with a short note, and get reminded at a chosen time.",
@@ -8,8 +9,7 @@
     "alarms",
     "notifications",
     "contextMenus",
-    "activeTab",
-    "tabs"
+    "activeTab"
   ],
   "background": {
     "service_worker": "background.js",

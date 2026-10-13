@@ -10,22 +10,22 @@ function getIconUrl() {
   return chrome.runtime.getURL('icon.png');
 }
 
-// Set up context menus on installation
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+// Recreate context menus on install/update so existing IDs cannot block setup.
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.contextMenus.removeAll();
+  await chrome.contextMenus.create({
     id: SHELF_PAGE_ID,
     title: 'Shelf This Page',
     contexts: ['page']
   });
 
-  chrome.contextMenus.create({
+  await chrome.contextMenus.create({
     id: SHELF_LINK_ID,
     title: 'Shelf This Link',
     contexts: ['link']
   });
 
-  // Check for overdue reminders when the extension is installed/reloaded
-  checkOverdueReminders(1500);
+  await synchronizeReminderAlarms();
 });
 
 // Handle context menu clicks
@@ -48,7 +48,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
   }
 
-  if (url) {
+  if (isWebUrl(url)) {
     const remindAt = Date.now() + 30 * 60 * 1000; // Default 30 minutes
     const newItem: ShelfItem = {
       id: crypto.randomUUID(),
@@ -61,21 +61,30 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
     try {
       await saveReminder(newItem);
-      
-      // Show confirmation notification
+    } catch (err) {
+      console.error('Failed to save context menu item:', err);
+      return;
+    }
+
+    try {
+      await chrome.storage.local.set({ editItemId: newItem.id });
+
+      // Open the existing toolbar popup and focus the item that was just saved.
+      // This API is available in Chrome 127 and newer.
+      if (typeof chrome.action.openPopup !== 'function') {
+        throw new Error('Opening the action popup requires Chrome 127 or newer.');
+      }
+      await chrome.action.openPopup();
+    } catch (err) {
+      console.error('Saved item, but could not open the Shelf popup:', err);
+      // Keep the pending item ID so the next toolbar click opens its edit form.
       chrome.notifications.create(newItem.id + '-save', {
         type: 'basic',
         iconUrl: getIconUrl(),
         title: 'Saved to Shelf',
-        message: `"${newItem.title}" will remind you in 30 mins.`,
-        buttons: [
-          { title: 'Okay' },
-          { title: 'Edit Time' }
-        ],
+        message: 'Click the Shelf toolbar icon to adjust its reminder settings.',
         requireInteraction: false
       });
-    } catch (err) {
-      console.error('Failed to save context menu item:', err);
     }
   }
 });
@@ -192,31 +201,27 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-// Helper to ensure URL is fully qualified for chrome.tabs.create
-function formatUrlForTabs(url: string): string {
-  if (!/^(https?|chrome-extension):\/\//i.test(url)) {
-    return 'https://' + url;
+function isWebUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
   }
-  return url;
 }
 
-// Helper to open a URL in a tab or window, handling cases where no windows are open
+// Open only saved web URLs. This also prevents malformed stored data from
+// navigating to browser-internal or executable URL schemes.
 async function openUrl(url: string): Promise<boolean> {
-  const finalUrl = formatUrlForTabs(url);
+  if (!isWebUrl(url)) return false;
+
   try {
-    // Try opening the tab directly. Chrome handles opening a new window if none exists.
-    await chrome.tabs.create({ url: finalUrl });
+    await chrome.tabs.create({ url });
     return true;
   } catch (err) {
-    await logDebug(`chrome.tabs.create failed: ${err}. Trying window.create fallback...`);
-    try {
-      await chrome.windows.create({ url: finalUrl });
-      return true;
-    } catch (winErr) {
-      await logDebug(`openUrl fallback failed: ${winErr}`);
-      console.error('Failed to open URL:', winErr);
-      return false;
-    }
+    await logDebug(`chrome.tabs.create failed: ${err}`);
+    console.error('Failed to open URL:', err);
+    return false;
   }
 }
 
@@ -241,7 +246,6 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
       } else if (buttonIndex === 1) {
         // Edit Time
         await logDebug('onButtonClicked save-confirm: clicked Edit Time');
-        await chrome.storage.local.set({ editItemId: originalId });
         // Open options page directly — chrome.action.openPopup requires a direct
         // user gesture (toolbar click) which is not available in notification callbacks.
         const optionsUrl = chrome.runtime.getURL(`options.html?action=edit&id=${originalId}`);
@@ -320,31 +324,28 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
   }
 });
 
-// Helper to clear all active notifications
-function clearAllNotifications() {
-  chrome.notifications.getAll((notifications) => {
-    if (notifications) {
-      for (const id of Object.keys(notifications)) {
-        chrome.notifications.clear(id);
-      }
+// Rebuild pending alarms from durable storage in case Chrome cleared an alarm
+// after an extension update or browser restart.
+async function synchronizeReminderAlarms() {
+  const reminders = await getReminders();
+  const now = Date.now();
+
+  for (const item of reminders) {
+    if (!item.delivered && item.remindAt > now) {
+      await chrome.alarms.create(item.id, { when: item.remindAt });
     }
-  });
+  }
+
+  await checkOverdueReminders();
 }
 
-// Register startup listener to check for overdue reminders when Chrome starts
+// Restore pending alarms and surface reminders missed while Chrome was closed.
 chrome.runtime.onStartup.addListener(async () => {
-  clearAllNotifications();
-  await checkOverdueReminders(1500);
+  await synchronizeReminderAlarms();
 });
 
-// Check for overdue reminders when a browser window is created (e.g. browser is reopened)
-chrome.windows.onCreated.addListener(async () => {
-  await logDebug('onCreated: browser window opened, checking overdue reminders');
-  await checkOverdueReminders(1500);
-});
-
-// Run overdue check when the service worker starts up initially
-checkOverdueReminders(1500);
+// Also reconcile when the service worker starts.
+void synchronizeReminderAlarms();
 
 
 
@@ -369,11 +370,11 @@ chrome.runtime.onMessage.addListener((message): true | void => {
     }
     return;
   } else if (message.type === 'OPEN_AND_REMOVE') {
-    const { id, url } = message;
+    const { id } = message;
     (async () => {
       try {
         const item = await getReminder(id);
-        const success = await openUrl(url);
+        const success = item ? await openUrl(item.url) : false;
         if (success && item) {
           if (item.everyday) {
             const nextRemindAt = getNextOccurrence(item.everydayTime || getHHMM(item.remindAt));

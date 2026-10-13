@@ -13,6 +13,6 @@ export default defineConfig({
       },
     },
     outDir: 'dist',
-    emptyOutDir: false, // Don't clear dist, because we might run background and frontend builds in sequence
+    emptyOutDir: true,
   },
 });

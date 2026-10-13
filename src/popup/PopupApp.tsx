@@ -118,26 +118,16 @@ export default function PopupApp() {
   useEffect(() => {
     loadReminders();
 
-    if (typeof chrome !== 'undefined' && chrome.notifications) {
-      chrome.notifications.getAll((notifications) => {
-        if (notifications) {
-          for (const id of Object.keys(notifications)) {
-            chrome.notifications.clear(id);
-          }
-        }
-      });
-    }
-
     if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.storage.local.get(['editItemId'], (result) => {
-        const itemId = result?.editItemId;
+      chrome.storage.local.get('editItemId', (result) => {
+        const itemId = result.editItemId as string | undefined;
         if (itemId) {
           chrome.storage.local.remove('editItemId');
           getReminders().then((items) => {
-            const item = items.find(i => i.id === itemId);
-            if (item) {
-              handleEditInit(item);
-            }
+            const item = items.find((reminder) => reminder.id === itemId);
+            if (item) handleEditInit(item);
+          }).catch((error) => {
+            console.error('Could not load the saved item for editing:', error);
           });
         }
 
@@ -147,7 +137,6 @@ export default function PopupApp() {
               title: tabs[0].title || 'Webpage',
               url: tabs[0].url || '',
             });
-            // Only pre-populate title if we are not editing an item
             if (!itemId) {
               setTitle(tabs[0].title || 'Webpage');
             }
@@ -289,9 +278,13 @@ export default function PopupApp() {
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeTab) return;
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (!activeTab || !/^https?:\/\//i.test(activeTab.url)) {
+      setErrorMsg('Shelf can only save pages with an http or https address.');
+      return;
+    }
 
     const remindAt = calculateRemindAt(preset, customDate, customTime);
 
@@ -425,6 +418,11 @@ export default function PopupApp() {
                 <Link2 className="w-3.5 h-3.5 stroke-[1.5] text-zinc-500" />
                 <span className="text-[10px] uppercase font-bold tracking-wider">Shelf Current Page</span>
               </div>
+              {!/^https?:\/\//i.test(activeTab.url) && (
+                <p className="text-xs text-amber-300" role="status">
+                  Shelf can save regular web pages only. Open an http or https page first.
+                </p>
+              )}
 
               {/* Title Input */}
               <input
@@ -432,6 +430,7 @@ export default function PopupApp() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Title"
+                aria-label="Page title"
                 className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none transition-all duration-150"
               />
 
@@ -441,6 +440,7 @@ export default function PopupApp() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add optional note..."
+                aria-label="Optional reminder note"
                 maxLength={150}
                 className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-1.5 text-xs placeholder-zinc-600 focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 outline-none transition-all duration-150"
               />
@@ -465,7 +465,9 @@ export default function PopupApp() {
 
                   <button
                     type="submit"
-                    className="px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 rounded-lg text-xs font-semibold shadow active:scale-[0.98] transition-all duration-150 flex items-center gap-1"
+                    disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
+                    aria-label="Save this page to Shelf"
+                    className="px-4 bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 rounded-lg text-xs font-semibold shadow active:scale-[0.98] transition-all duration-150 flex items-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2]" />
                     Add
@@ -640,22 +642,28 @@ export default function PopupApp() {
 
                       <div className="flex items-center gap-1">
                         <button
+                          type="button"
                           onClick={() => handleOpen(item)}
                           title="Open page"
+                          aria-label={`Open ${item.title}`}
                           className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 rounded-lg transition-all duration-150"
                         >
                           <ExternalLink className="w-3.5 h-3.5 stroke-[1.5]" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleEditInit(item)}
                           title="Edit reminder"
+                          aria-label={`Edit reminder for ${item.title}`}
                           className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 rounded-lg transition-all duration-150"
                         >
                           <Edit2 className="w-3.5 h-3.5 stroke-[1.5]" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleDelete(item.id)}
                           title="Delete permanently"
+                          aria-label={`Delete ${item.title}`}
                           className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-150"
                         >
                           <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
